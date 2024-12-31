@@ -35,7 +35,7 @@
     "exifer": "^1.0.0-beta.2",
     "ffmpeg-static": "^4.4.0",
     "geo-reverse": "^1.0.13",
-    "get-port": "^5.1.1",
+    "get-port": "^7.1.0",
     "get-stdin": "^9.0.0",
     "humanize-duration": "^3.30.0",
     "jimp": "^0.22.10",
