@@ -49,7 +49,7 @@
     "@nextcloud/axios": "^2.4.0",
     "@nextcloud/babel-config": "^1.0.0",
     "@nextcloud/browserslist-config": "^2.3.0",
-    "@nextcloud/eslint-config": "^8.1.4",
+    "@nextcloud/eslint-config": "^8.4.1",
     "@nextcloud/initial-state": "^2.0.0",
     "@nextcloud/router": "^2.1.2",
     "@nextcloud/stylelint-config": "^2.3.1",
