@@ -19,6 +19,7 @@ use OCA\Recognize\Service\StorageService;
 use OCA\Recognize\Service\TagManager;
 use OCP\Files\Config\ICachedMountInfo;
 use OCP\Files\Config\IUserMountCache;
+use OCP\Files\IRootFolder;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\ExceptionInterface;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -30,10 +31,13 @@ class Classify extends Command {
 	/** @var array<string, Classifier>  */
 	private array $classifiers = [];
 
+	protected IRootFolder $rootFolder;
+
 	public function __construct(
 		private StorageService $storageService,
 		private TagManager $tagManager,
 		private Logger $logger,
+		IRootFolder $rootFolder,
 		ImagenetClassifier $imagenet,
 		ClusteringFaceClassifier $faces,
 		MovinetClassifier $movinet,
@@ -43,6 +47,7 @@ class Classify extends Command {
 		private ClearBackgroundJobs $clearBackgroundJobs,
 	) {
 		parent::__construct();
+		$this->rootFolder = $rootFolder;
 		$this->classifiers[ImagenetClassifier::MODEL_NAME] = $imagenet;
 		$this->classifiers[ClusteringFaceClassifier::MODEL_NAME] = $faces;
 		$this->classifiers[MusicnnClassifier::MODEL_NAME] = $musicnn;
@@ -57,8 +62,10 @@ class Classify extends Command {
 	 */
 	protected function configure() {
 		$this->setName('recognize:classify')
-			->setDescription('Classify all files with the current settings in one go (will likely take a long time)')
-			->addOption('retry', null, InputOption::VALUE_NONE, "Only classify untagged images");
+			->setDescription('Classify all files with the current settings in one go (will likely take a long time).')
+			->addOption('retry', null, InputOption::VALUE_NONE, "Only classify untagged images.")
+			->addOption('user', 'u', InputOption::VALUE_REQUIRED, "Only classify files for the given user.", null)
+			->addOption('path', 'p', InputOption::VALUE_REQUIRED, "Only classify files for the given path. Applicable only with the --user option.", null);
 	}
 
 	/**
@@ -86,6 +93,29 @@ class Classify extends Command {
 
 		$processedTag = $this->tagManager->getProcessedTag();
 
+		$userFilter = $input->getOption('user');
+		$pathFilter = $input->getOption('path');
+
+		$pathMatcher = null;
+
+		if ($userFilter === null && $pathFilter !== null) {
+			$this->logger->warning('Path filter is set, but no user filter is set. Ignoring path filter.');
+			unset($pathFilter);
+		} else if ($userFilter !== null) {
+			$pathMatcher = '/' . $userFilter;
+
+			if ($pathFilter !== null) {
+				if (!str_starts_with($pathFilter, '/')) {
+					$pathFilter = '/' . $pathFilter;
+				}
+				$pathMatcher .= '/files' . $pathFilter;
+			}
+		}
+
+		if ($pathMatcher !== null) {
+			$this->logger->info('Matching files for path: ' . $pathMatcher);
+		}
+
 		foreach ($this->storageService->getMounts() as $mount) {
 			$this->logger->info('Processing storage ' . $mount['storage_id'] . ' with root ID ' . $mount['override_root']);
 
@@ -107,6 +137,20 @@ class Classify extends Command {
 					MusicnnClassifier::MODEL_NAME => [],
 				];
 				foreach ($this->storageService->getFilesInMount($mount['storage_id'], $mount['override_root'], $models, $lastFileId) as $file) {
+
+					if ($pathMatcher !== null) {
+						$actualFile = $this->rootFolder->getById($file['fileid']);
+						if ($actualFile[0] !== null) {
+							$path = $actualFile[0]->getPath();
+
+							if (!str_starts_with($path, $pathMatcher)) {
+								continue;
+							}
+							$this->logger->info('Matching file path: ' . $actualFile[0]->getPath());
+						} else {
+							continue;
+						}
+					}
 					$i++;
 					$lastFileId = $file['fileid'];
 					$queueFile = new QueueFile();
