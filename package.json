@@ -29,7 +29,7 @@
     "@tensorflow/tfjs-backend-wasm": "4.x",
     "@tensorflow/tfjs-node": "4.x",
     "@tensorflow/tfjs-node-gpu": "4.x",
-    "@vladmandic/face-api": "^1.7.11",
+    "@vladmandic/human": "^3.3.4",
     "download": "^8.0.0",
     "execa": "^5.1.1",
     "exifer": "^1.0.0-beta.2",

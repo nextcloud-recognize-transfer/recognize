@@ -1,35 +1,59 @@
 const path = require('path')
 const fs = require('fs/promises')
 
-let tf, faceapi, Jimp
+let tf, Human, Jimp, wasm
 let PUREJS = false
 if (process.env.RECOGNIZE_PUREJS === 'true') {
 	tf = require('@tensorflow/tfjs')
-	require('@tensorflow/tfjs-backend-wasm')
-	faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js')
+	wasm = require('@tensorflow/tfjs-backend-wasm')
+	Human = require('@vladmandic/human/dist/human.node-wasm.js')
 	Jimp = require('jimp')
 	PUREJS = true
 } else {
 	try {
 		if (process.env.RECOGNIZE_GPU === 'true') {
 			tf = require('@tensorflow/tfjs-node-gpu')
-			faceapi = require('@vladmandic/face-api/dist/face-api.node-gpu.js')
+			Human = require('@vladmandic/human/dist/human.node-gpu.js')
 		} else {
 			tf = require('@tensorflow/tfjs-node')
-			faceapi = require('@vladmandic/face-api/dist/face-api.node.js')
+			Human = require('@vladmandic/human/dist/human.node.js')
 		}
 	} catch (e) {
 		console.error(e)
 		console.error('Trying js-only mode')
 		tf = require('@tensorflow/tfjs')
-		require('@tensorflow/tfjs-backend-wasm')
-		faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js')
+		wasm = require('@tensorflow/tfjs-backend-wasm')
+		Human = require('@vladmandic/human/dist/human.node-wasm.js')
 		Jimp = require('jimp')
 		PUREJS = true
 	}
 }
-
 if (process.argv.length < 3) throw new Error('Incorrect arguments: node classifier_faces.js ...<IMAGE_FILES> | node classify.js -')
+
+const config = {
+	cacheSensitivity: 0.01,
+	//modelBasePath: 'file://node_modules/@vladmandic/human/models/',
+	modelBasePath: 'https://vladmandic.github.io/human-models/models/',
+	backend: PUREJS ? 'wasm' : 'tensorflow',
+	//wasmPath: 'file://node_modules/@tensorflow/tfjs-backend-wasm/dist/',
+	wasmPath: `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tf.version_core}/dist/`,
+	debug: false,
+	async: false,
+	softwareKernels: true,
+	face: {
+		enabled: true,
+		detector: { rotation: false, maxDetected: 100 },
+		iris: { enabled: true },
+		description: { enabled: true },
+		antispoof: { enabled: true },
+		liveness: { enabled: true },
+	},
+	hand: { enabled: false },
+	body: { enabled: false },
+	object: { enabled: false },
+	segmentation: { enabled: false },
+	filter: { enabled: false },
+}
 
 /**
  *
@@ -43,9 +67,8 @@ async function main() {
 		paths = process.argv.slice(2)
 	}
 
-	await faceapi.nets.ssdMobilenetv1.loadFromDisk(path.resolve(__dirname, '..', 'node_modules/@vladmandic/face-api/model'))
-	await faceapi.nets.faceLandmark68Net.loadFromDisk(path.resolve(__dirname, '..', 'node_modules/@vladmandic/face-api/model'))
-	await faceapi.nets.faceRecognitionNet.loadFromDisk(path.resolve(__dirname, '..', 'node_modules/@vladmandic/face-api/model'))
+	Human.env.updateBackend();
+	const human = new Human.Human(config)
 
 	for (const path of paths) {
 		try {
@@ -55,19 +78,18 @@ async function main() {
 			} else {
 				tensor = await tf.node.decodeImage(await fs.readFile(path), 3)
 			}
-			const results = await faceapi.detectAllFaces(tensor).withFaceLandmarks().withFaceDescriptors()
+			const results = await human.detect(tensor)
 			tensor.dispose()
-			const vectors = results
+			const vectors = results.face
 				.map(result => ({
-					angle: result.angle,
-					vector: result.descriptor,
-					x: result.detection.relativeBox.x,
-					y: result.detection.relativeBox.y,
-					height: result.detection.relativeBox.height,
-					width: result.detection.relativeBox.width,
-					score: result.detection.score,
+					angle: result.rotation.angle,
+					vector: result.embedding,
+					x: result.boxRaw[0],
+					y: result.boxRaw[1],
+					height: result.boxRaw[3],
+					width: result.boxRaw[2],
+					score: result.score,
 				}))
-
 			console.log(JSON.stringify(vectors))
 		} catch (e) {
 			console.error(e)
@@ -76,6 +98,9 @@ async function main() {
 	}
 }
 
+if (PUREJS) {
+	wasm.setWasmPaths(config.wasmPath, true);
+}
 tf.setBackend(PUREJS ? 'wasm' : 'tensorflow')
 	.then(() => main())
 	.catch(e => {
