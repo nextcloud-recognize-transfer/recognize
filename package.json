@@ -57,7 +57,7 @@
     "@nextcloud/webpack-vue-config": "^5.5.1",
     "@vue/test-utils": "^1.1.3",
     "async-parallel": "^1.2.3",
-    "fast-glob": "^3.2.11",
+    "fast-glob": "^3.3.3",
     "flickr-sdk": "^6.0.0",
     "google-img-scrap": "^1.0.6",
     "vue": "^2.7.14"
